@@ -6,4 +6,4 @@ set -e
 echo "Starting Ansible deployment..."
 
 # Run the playbook using the Ansible inventory file
-ansible-playbook -i ansible/inventory.ini ansible/install_openemr.yml
+ansible-playbook -i inventory.ini install_openemr.yml
