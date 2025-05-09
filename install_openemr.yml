@@ -1,0 +1,479 @@
+---
+- name: Install OpenEMR on apps2.frappe.africa
+  hosts: apps2
+  become: yes
+
+  vars:
+    openemr_version: "v7_0_3"
+    domain: "apps2.frappe.africa"    
+    mariadb_root_password: "tEGvUHOTpl$I432AgX54I7Ul"
+    openemr_db_user: "mpe15vf4"
+    openemr_db_pass: "8K18sEqkLvC#2jiAShxSvX2D"
+    openemr_db_name: "{{ domain | replace('.', '_') }}"
+    openemr_admin_user: "Admin5i3Fv45"
+    openemr_admin_pass: "YyWhNcb8Qp#xteiYS8mpEGlv"
+    web_root: "/var/www/{{ domain }}"
+
+
+  tasks:
+
+  - name: Update apt package cache
+    apt:
+      update_cache: yes
+
+  - name: Upgrade all packages
+    apt:
+      upgrade: dist
+
+  - name: Install Python 3 MySQL dependencies for Ansible
+    apt:
+      name: python3-pymysql
+      state: present
+
+  - name: Install required packages
+    apt:
+      name:
+        - apache2
+        - mariadb-server
+        - mariadb-client
+        - php
+        - php-mysql
+        - php-cli
+        - php-gd
+        - php-curl
+        - php-xml
+        - php-mbstring
+        - php-soap        
+        - git
+        - unzip
+        - composer 
+        - nodejs        
+        - npm               
+      state: present
+      update_cache: yes
+
+  - name: Ensure MySQL root uses mysql_native_password
+    community.mysql.mysql_user:
+      name: root
+      host: localhost
+      password: "{{ mariadb_root_password }}"
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+      plugin: mysql_native_password
+
+  - name: Remove anonymous MySQL users
+    community.mysql.mysql_user:
+      name: ''
+      host_all: yes
+      state: absent
+      login_user: root
+      login_password: "{{ mariadb_root_password }}"
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+
+  - name: Remove test database
+    community.mysql.mysql_db:
+      name: test
+      state: absent
+      login_user: root
+      login_password: "{{ mariadb_root_password }}"
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+
+  - name: Disallow remote root login
+    community.mysql.mysql_user:
+      name: root
+      host: "%"
+      state: absent
+      login_user: root
+      login_password: "{{ mariadb_root_password }}"
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+
+  - name: Reload privilege tables
+    shell: |
+      mysql -u root -p'{{ mariadb_root_password }}' -e "FLUSH PRIVILEGES;"
+
+
+  - name: Create MySQL credentials file for root (optional)
+    copy:
+      dest: /root/.my.cnf
+      content: |
+        [client]
+        user=root
+        password={{ mariadb_root_password }}
+      owner: root
+      group: root
+      mode: '0600'
+
+  - name: Ensure OpenEMR MySQL user exists
+    community.mysql.mysql_user:
+      name: "{{ openemr_db_user }}"
+      password: "{{ openemr_db_pass }}"
+      priv: "*.*:ALL"
+      host: "localhost"
+      state: present
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+
+
+  - name: Ensure OpenEMR database exists
+    community.mysql.mysql_db:
+      name: "{{ openemr_db_name }}"
+      state: present
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+
+  - name: Ensure /var/www exists
+    file:
+      path: /var/www
+      state: directory
+      mode: '0755'
+      owner: root
+      group: root
+
+  - name: Ensure web root exists
+    file:
+      path: "{{ web_root }}"
+      state: directory
+      mode: '0755'
+      owner: www-data
+      group: www-data
+
+      
+  - name: Allow Git to treat /var/www/openemr as safe
+    shell: git config --global --add safe.directory {{ web_root }}
+    
+    
+  - name: Clone OpenEMR source from GitHub
+    git:
+      repo: "https://github.com/openemr/openemr.git"
+      dest: "{{ web_root }}"
+      version: "{{ openemr_version }}"
+      depth: 1
+      force: yes    
+
+  - name: Install Composer
+    apt:
+      name: composer
+      state: present
+      
+  - name: Reset permissions on vendor directory before composer install
+    file:
+      path: "{{ web_root }}/vendor"
+      recurse: yes
+      owner: www-data
+      group: www-data
+      state: directory
+      mode: '0755'
+
+  - name: Run composer install for OpenEMR
+    become_user: www-data
+    shell: composer install --no-dev
+    args:
+      chdir: "{{ web_root }}"
+
+  - name: Ensure web root is writable by www-data
+    file:
+      path: "{{ web_root }}"
+      recurse: yes
+      owner: www-data
+      group: www-data
+      
+  - name: Run npm install
+    become_user: www-data
+    environment:
+      HOME: "/tmp"
+    shell: npm install
+    args:
+      chdir: "{{ web_root }}"
+    
+  - name: Build OpenEMR frontend assets
+    become_user: www-data
+    environment:
+      HOME: "/tmp"
+    shell: npm run build
+    args:
+      chdir: "{{ web_root }}"
+
+  - name: Drop OpenEMR DB if exists
+    community.mysql.mysql_db:
+      name: "{{ openemr_db_name }}"
+      state: absent
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+
+
+  - name: Recreate OpenEMR DB
+    community.mysql.mysql_db:
+      name: "{{ openemr_db_name }}"
+      state: present
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+
+
+  - name: Disable STRICT mode temporarily in MariaDB
+    shell: |
+      mysql -u root -p'{{ mariadb_root_password }}' -e "SET GLOBAL sql_mode = '';"
+
+
+  - name: Copy OpenEMR DB dump to remote server
+    copy:
+      src: openemrdb.sql         # path on Ansible control node
+      dest: /tmp/openemrdb.sql   # path on remote target host
+      owner: root
+      group: root
+      mode: '0644'
+
+
+  - name: Inject OpenEMR database schema with cleaned SQL
+    shell: |
+      sed '/^[-]\{3,\}$/d' /tmp/openemrdb.sql | mysql -u root -p'{{ mariadb_root_password }}' {{ openemr_db_name }}
+    args:
+      creates: "/var/lib/mysql/{{ openemr_db_name }}/version.sql"
+
+  - name: Confirm OpenEMR tables created
+    shell: |
+      mysql -u root -p'{{ mariadb_root_password }}' -e "USE {{ openemr_db_name }}; SHOW TABLES;" | wc -l
+    register: table_count
+
+  - name: Debug table count
+    debug:
+      msg: "OpenEMR tables created: {{ table_count.stdout }}"
+
+
+  - name: Create OpenEMR admin config file (optional pre-seed — OpenEMR normally needs manual setup)
+    template:
+      src: openemr_site.php.j2
+      dest: "{{ web_root }}/sites/default/sqlconf.php"
+    notify: Restart Apache
+
+  - name: Set permissions
+    file:
+      path: "{{ web_root }}"
+      state: directory
+      recurse: yes
+      owner: www-data
+      group: www-data
+
+
+  - name: Copy Apache virtual host config
+    copy:
+      dest: "/etc/apache2/sites-available/{{ domain }}.conf"
+      content: |
+        <VirtualHost *:80>
+          ServerName {{ domain }}
+          DocumentRoot {{ web_root }}
+
+          <Directory {{ web_root }}>
+              Options FollowSymLinks
+              AllowOverride All
+              Require all granted
+          </Directory>
+
+          ErrorLog ${APACHE_LOG_DIR}/{{ domain }}_error.log
+          CustomLog ${APACHE_LOG_DIR}/{{ domain }}_access.log combined
+        </VirtualHost>
+
+  - name: Install Certbot and Apache plugin
+    apt:
+      name:
+        - certbot
+        - python3-certbot-apache
+      state: present
+
+  - name: Attempt Let's Encrypt SSL certificate issuance
+    shell: |
+      certbot --apache --non-interactive --agree-tos --email randd@sive.host -d {{ domain }}
+    register: certbot_result
+    failed_when: false
+    changed_when: "'Certificate not yet due for renewal' not in certbot_result.stdout"
+
+  - name: Create fallback cert directory if Let's Encrypt failed
+    file:
+      path: "/etc/letsencrypt/live/{{ domain }}"
+      state: directory
+      mode: '0755'
+    when: certbot_result.rc != 0
+
+  - name: Generate self-signed certificate (fallback)
+    command: >
+      openssl req -x509 -nodes -days 365 -newkey rsa:2048
+      -keyout /etc/letsencrypt/live/{{ domain }}/privkey.pem
+      -out /etc/letsencrypt/live/{{ domain }}/fullchain.pem
+      -subj "/C=ZA/ST=NA/L=NA/O=Sive/CN={{ domain }}"
+    when: certbot_result.rc != 0
+
+
+  - name: Create Apache SSL virtual host config for OpenEMR
+    copy:
+      dest: "/etc/apache2/sites-available/{{ domain }}-ssl.conf"
+      content: |
+        <IfModule mod_ssl.c>
+        <VirtualHost *:443>
+            ServerName {{ domain }}
+            DocumentRoot {{ web_root }}
+  
+            <Directory {{ web_root }}>
+                Options FollowSymLinks
+                AllowOverride All
+                Require all granted
+            </Directory>
+  
+            ErrorLog ${APACHE_LOG_DIR}/{{ domain }}_ssl_error.log
+            CustomLog ${APACHE_LOG_DIR}/{{ domain }}_ssl_access.log combined
+
+            SSLEngine on
+            SSLCertificateFile /etc/letsencrypt/live/{{ domain }}/fullchain.pem
+            SSLCertificateKeyFile /etc/letsencrypt/live/{{ domain }}/privkey.pem
+        </VirtualHost>
+        </IfModule>
+
+  - name: Disable default/conflicting Apache sites
+    command: a2dissite {{ item }}
+    args:
+      removes: "/etc/apache2/sites-enabled/{{ item }}"
+    loop:
+      - 000-default.conf
+      - 000-default-le-ssl.conf
+
+  - name: Enable Apache mod_rewrite
+    command: a2enmod rewrite
+    notify: Restart Apache
+
+  - name: Ensure correct <Directory> permissions in HTTP vhost
+    blockinfile:
+      path: "/etc/apache2/sites-available/{{ domain }}.conf"
+      marker: "# {mark} OpenEMR Directory Block"
+      block: |
+        <Directory {{ web_root }}>
+            Options FollowSymLinks
+            AllowOverride All
+            Require all granted
+        </Directory>
+    notify: Restart Apache
+
+  - name: Ensure correct <Directory> permissions in HTTPS vhost
+    blockinfile:
+      path: "/etc/apache2/sites-available/{{ domain }}-ssl.conf"
+      marker: "# {mark} OpenEMR Directory Block"
+      block: |
+        <Directory {{ web_root }}>
+            Options FollowSymLinks
+            AllowOverride All
+            Require all granted
+        </Directory>
+    notify: Restart Apache
+
+  - name: Ensure OpenEMR files are owned by www-data
+    file:
+      path: "{{ web_root }}"
+      recurse: yes
+      owner: www-data
+      group: www-data
+
+  - name: Ensure OpenEMR files are readable
+    file:
+      path: "{{ web_root }}"
+      recurse: yes
+      mode: '0755'
+
+  - name: Enforce HTTPS redirection in port 80 vhost
+    lineinfile:
+      path: "/etc/apache2/sites-available/{{ domain }}.conf"
+      insertafter: "<VirtualHost \\*:80>"
+      line: "Redirect permanent / https://{{ domain }}/"
+    notify: Restart Apache
+
+  - name: Set directory permissions to 0755
+    shell: find {{ web_root }} -type d -exec chmod 0755 {} \;
+
+  - name: Set file permissions to 0644
+    shell: find {{ web_root }} -type f -exec chmod 0644 {} \;
+  
+  - name: Enable OpenEMR domain-specific sites
+    command: a2ensite {{ item }}
+    args:
+      creates: "/etc/apache2/sites-enabled/{{ item }}"
+    loop:
+      - "{{ domain }}.conf"
+      - "{{ domain }}-ssl.conf"
+
+
+  - name: Set global ServerName in apache2.conf
+    lineinfile:
+      path: /etc/apache2/apache2.conf
+      line: "ServerName {{ domain }}"
+      insertafter: BOF
+
+
+
+  - name: Enable OpenEMR HTTPS site
+    command: a2ensite {{ domain }}-ssl.conf
+    args:
+      creates: "/etc/apache2/sites-enabled/{{ domain }}-ssl.conf"
+
+  - name: Enable Apache SSL module
+    command: a2enmod ssl
+    notify: Restart Apache
+  
+  - name: Reload Apache to apply SSL vhost
+    service:
+      name: apache2
+      state: reloaded
+
+  - name: Set recommended PHP values in php.ini for OpenEMR
+    lineinfile:
+      path: /etc/php/8.3/apache2/php.ini
+      regexp: "{{ item.regexp }}"
+      line: "{{ item.line }}"
+      backrefs: yes
+    loop:
+      - { regexp: '^max_input_vars\s*=.*',            line: 'max_input_vars = 3000' }
+      - { regexp: '^max_execution_time\s*=.*',        line: 'max_execution_time = 60' }
+      - { regexp: '^max_input_vars\s*=.*',            line: 'max_input_vars = 6000' }      
+      - { regexp: '^max_input_time\s*=.*',            line: 'max_input_time = -1' }
+      - { regexp: '^post_max_size\s*=.*',             line: 'post_max_size = 300M' }
+      - { regexp: '^memory_limit\s*=.*',              line: 'memory_limit = 512M' }
+      - { regexp: '^file_uploads\s*=.*',              line: 'file_uploads = On' }
+      - { regexp: '^upload_max_filesize\s*=.*',       line: 'upload_max_filesize = 300M' }
+      - { regexp: '^upload_tmp_dir\s*=.*',            line: 'upload_tmp_dir = /tmp' }
+      - { regexp: '^mysqli.allow_local_infile\s*=.*',line: 'mysqli.allow_local_infile = On' }
+
+  - name: Add OpenEMR Zend/secure directories to Apache config
+    blockinfile:
+      path: "/etc/apache2/sites-available/{{ domain }}.conf"
+      marker: "# {mark} OpenEMR Zend/Security Directives"
+      block: |
+        <Directory "{{ web_root }}">
+            AllowOverride FileInfo
+            Require all granted
+        </Directory>
+        <Directory "{{ web_root }}/sites">
+            AllowOverride None
+        </Directory>
+        <Directory "{{ web_root }}/sites/*/documents">
+            Require all denied
+        </Directory>
+    notify: Restart Apache
+
+
+  - name: Reload Apache to apply new PHP settings
+    service:
+      name: apache2
+      state: reloaded
+      
+  - name: Enable OpenEMR site and rewrite module
+    shell: |
+      a2ensite {{ domain }}
+      a2enmod rewrite
+      systemctl reload apache2
+
+  - name: Add domain to /etc/hosts (if testing locally)
+    lineinfile:
+      path: /etc/hosts
+      line: "127.0.0.1 {{ domain }}"
+      state: present
+
+  handlers:
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+        
+    - name: Reboot the server
+      ansible.builtin.reboot:
+        msg: "Reboot initiated by Ansible"
+        reboot_timeout: 1
