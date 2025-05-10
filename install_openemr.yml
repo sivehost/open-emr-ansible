@@ -4,15 +4,15 @@
   become: yes
 
   vars:
-    openemr_version: "v7_0_3"
-    domain: "apps2.frappe.africa"    
-    mariadb_root_password: "tEGvUHOTpl$I432AgX54I7Ul"
-    openemr_db_user: "mpe15vf4"
-    openemr_db_pass: "8K18sEqkLvC#2jiAShxSvX2D"
-    openemr_db_name: "{{ domain | replace('.', '_') }}"
-    openemr_admin_user: "Admin5i3Fv45"
-    openemr_admin_pass: "YyWhNcb8Qp#xteiYS8mpEGlv"
-    web_root: "/var/www/{{ domain }}"
+    openemr_version: "{{ lookup('env', 'OPENEMR_VERSION') }}"
+    domain: "{{ lookup('env', 'DOMAIN') }}"
+    mariadb_root_password: "{{ lookup('env', 'MARIADB_ROOT_PASSWORD') }}"
+    openemr_db_user: "{{ lookup('env', 'OPENEMR_DB_USER') }}"
+    openemr_db_pass: "{{ lookup('env', 'OPENEMR_DB_PASS') }}"
+    openemr_admin_user: "{{ lookup('env', 'OPENEMR_ADMIN_USER') }}"
+    openemr_admin_pass: "{{ lookup('env', 'OPENEMR_ADMIN_PASS') }}"
+    openemr_db_name: "{{ lookup('env', 'DOMAIN') | replace('.', '_') }}"
+    web_root: "/var/www/{{ lookup('env', 'DOMAIN') }}"
 
 
   tasks:
