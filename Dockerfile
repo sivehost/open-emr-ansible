@@ -16,7 +16,7 @@ RUN apt update && apt install -y \
 # Clone OpenEMR from your GitHub fork
 RUN git clone --depth 1 --branch main https://github.com/sivehost/openemrv703.git /var/www/apps2.frappe.africa
 
-COPY . /var/www/apps2.frappe.africa
+# COPY . /var/www/apps2.frappe.africa
 
 WORKDIR ${WEB_ROOT}
 
