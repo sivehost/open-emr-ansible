@@ -14,7 +14,7 @@ RUN apt update && apt install -y \
     php-xml php-mbstring php-soap git unzip curl composer nodejs npm
 
 # Clone OpenEMR from your GitHub fork
-# RUN git clone --depth 1 --branch main https://github.com/sivehost/openemrv703.git /var/www/apps2.frappe.africa
+RUN git clone --depth 1 --branch main https://github.com/sivehost/openemrv703.git /var/www/apps2.frappe.africa
 
 COPY . /var/www/apps2.frappe.africa
 
@@ -31,7 +31,7 @@ RUN a2enmod rewrite ssl && \
 
 # Add startup script
 COPY docker-entrypoint.sh /usr/local/bin/startup.sh
-COPY sql/openemrdb.sql /tmp/openemrdb.sql
+COPY openemrdb.sql /tmp/openemrdb.sql
 RUN chmod +x /usr/local/bin/startup.sh
 
 EXPOSE 8080 8443
