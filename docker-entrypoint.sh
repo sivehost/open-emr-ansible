@@ -7,7 +7,7 @@ until mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1'; do
 done
 
 echo "Ensuring database '${MYSQL_DATABASE}' exists..."
-mysql -h "$MYSQL_HOST" -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS \`${MYSQL_DATABASE}\`;"
+mysql -h "$MYSQL_HOST" -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};"
 
 # Import only if not already done
 if [[ ! -f /var/www/.import_done ]]; then
