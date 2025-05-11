@@ -29,7 +29,7 @@ RUN a2enmod rewrite ssl && \
 
 # Add startup script
 COPY docker-entrypoint.sh /usr/local/bin/startup.sh
-COPY sql/openemrdb.sql /tmp/openemrdb.sql
+COPY /var/www/apps2.frappe.africa/sql/openemrdb.sql /tmp/openemrdb.sql
 RUN chmod +x /usr/local/bin/startup.sh
 
 EXPOSE 8080 8443
