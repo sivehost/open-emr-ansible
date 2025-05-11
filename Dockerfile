@@ -27,5 +27,11 @@ RUN composer install --no-dev && \
 RUN a2enmod rewrite ssl && \
     echo "ServerName apps2.fappe.africa" >> /etc/apache2/apache2.conf
 
+# Add startup script
+COPY docker-entrypoint.sh /usr/local/bin/startup.sh
+COPY sql/openemrdb.sql /tmp/openemrdb.sql
+RUN chmod +x /usr/local/bin/startup.sh
+
 EXPOSE 8080 8443
-CMD ["apache2ctl", "-D", "FOREGROUND"]
+# CMD ["apache2ctl", "-D", "FOREGROUND"]
+CMD ["bash", "/usr/local/bin/startup.sh"]
