@@ -7,12 +7,13 @@ until mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1'; do
     sleep 2
 done
 
-if ! mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e "USE $MYSQL_DATABASE;" 2>/dev/null; then
-    echo "Database '$MYSQL_DATABASE' does not exist. Creating and importing..."
-    mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE $MYSQL_DATABASE;"
+if [[ ! -f /var/www/.import_done ]]; then
+    echo "Importing database '$MYSQL_DATABASE'..."
+    mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS \`${MYSQL_DATABASE}\`;"
     mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /tmp/openemrdb.sql
+    touch /var/www/.import_done
 else
-    echo "Database '$MYSQL_DATABASE' already exists. Skipping import."
+    echo "Import already completed. Skipping."
 fi
 
 echo "Starting Apache..."
