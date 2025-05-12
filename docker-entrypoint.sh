@@ -24,6 +24,15 @@ if [[ ! -f /var/www/.import_done ]]; then
 </Directory>
 EOF
 
+    # Set ownership
+    chown -R www-data:www-data /var/www/apps2.frappe.africa
+
+    # Set file permissions
+    find /var/www/apps2.frappe.africa -type f -exec chmod 644 {} \;
+
+    # Set directory permissions
+    find /var/www/apps2.frappe.africa -type d -exec chmod 755 {} \;
+
     touch /var/www/.import_done
 else
     echo "Import already completed. Skipping."
