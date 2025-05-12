@@ -4,7 +4,7 @@ set -e
 echo "Waiting for MariaDB at host '$MYSQL_HOST'..."
 
 until mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1'; do
-    sleep 2
+    sleep 30
 done
 
 if [[ ! -f /var/www/.import_done ]]; then
