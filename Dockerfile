@@ -32,6 +32,6 @@ COPY docker-entrypoint.sh /usr/local/bin/startup.sh
 COPY openemrdb.sql /tmp/openemrdb.sql
 RUN chmod +x /usr/local/bin/startup.sh
 
-EXPOSE 8080 8443
-# CMD ["apache2ctl", "-D", "FOREGROUND"]
+EXPOSE 80 443
+
 CMD ["bash", "/usr/local/bin/startup.sh"]
